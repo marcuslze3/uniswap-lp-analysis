@@ -50,7 +50,7 @@ class UniV2:
 
         query = ''' query($pair_id: String!,$last_ts:BigInt!){
             swaps(
-                first: 1000,
+                first: 10,
                 where: {pair: $pair_id,timestamp_gt:$last_ts}, 
                 orderBy: timestamp,
                 orderDirection: asc
@@ -72,8 +72,9 @@ class UniV2:
         pair_id = poolID
         last_ts = startTime
 
-        while(int(last_ts) < endTime):
-
+        count = 0
+        while(count < 2):
+            # while(int(last_ts) < endTime):
             params = {
                 "pair_id": pair_id,
                 "last_ts": last_ts,
@@ -90,8 +91,19 @@ class UniV2:
 
             # grab last timestamp
             last_ts = data.iloc[-1]['timestamp']
+            count += 1
 
-        self.data.to_csv('data.csv')
+        self.data['timestamp'] = pd.to_datetime(
+            self.data['timestamp'], unit='s')
+
+        # resampling seems to only work on 1 column, try to do with many. WORST case, resample each amountIn/Out and append?
+        print(self.data)
+        self.data = self.data.resample('1min', on="timestamp").last()
+        #self.data.resample('M', on='timestamp').mean()
+        print(self.data)
+
+        # write data to csv so we can access easily in the future
+        # self.data.to_csv('data.csv')
 
         """
         r = requests.post(UNIV3_API, json={'query': query})
@@ -133,6 +145,7 @@ class UniV2:
 uniV2 = UniV2()
 
 # run this to get data and save into a CSV called data.csv
-#uniV2.getData(WETH_USDC_ID, LAST_TS, APR_1ST_2022)
+uniV2.getData(WETH_USDC_ID, LAST_TS, APR_1ST_2022)
+# print(uniV2.data)
 
-uniV2.calculateZscore('price', 7)
+#uniV2.calculateZscore('price', 7)
