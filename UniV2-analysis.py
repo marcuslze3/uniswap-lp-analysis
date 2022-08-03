@@ -43,7 +43,7 @@ def client(api_url):
 
 class UniV2:
 
-    def getData(self, poolID):
+    def getData(self, poolID, startTime, endTime):
 
         self.client = client(UNIV3_API)
         self.data = pd.DataFrame()
@@ -69,10 +69,10 @@ class UniV2:
             }'''
 
         cli = self.client
-        pair_id = WETH_USDC_ID
-        last_ts = LAST_TS
+        pair_id = poolID
+        last_ts = startTime
 
-        while(int(last_ts) < APR_1ST_2022):
+        while(int(last_ts) < endTime):
 
             params = {
                 "pair_id": pair_id,
@@ -131,5 +131,8 @@ class UniV2:
 
 
 uniV2 = UniV2()
-uniV2.getData(WETH_USDC_ID)
-#uniV2.calculateZscore('price', 7)
+
+# run this to get data and save into a CSV called data.csv
+#uniV2.getData(WETH_USDC_ID, LAST_TS, APR_1ST_2022)
+
+uniV2.calculateZscore('price', 7)
