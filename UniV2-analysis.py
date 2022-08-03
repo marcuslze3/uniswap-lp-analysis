@@ -1,5 +1,6 @@
 import requests
 from gql import gql, Client
+from gql.transport.requests import RequestsHTTPTransport
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -13,6 +14,9 @@ warnings.filterwarnings("ignore")
 
 UNIV3_API = "https://api.thegraph.com/subgraphs/name/uniswap/uniswap-v2"
 WETH_USDC_ID = "0xb4e16d0168e52d35cacd2c6185b44281ec28c9dc"
+LAST_TS = 1633059463  # unix for 01/10/2021
+APR_1ST_2022 = 1648742399
+AUG_1ST_2022 = 1659325063
 
 
 def client(api_url):
@@ -41,28 +45,10 @@ class UniV2:
 
     def getData(self, poolID):
 
-        query = """
-        {
-            swaps(
-                where:{pair: "0xb4e16d0168e52d35cacd2c6185b44281ec28c9dc", timestamp_lt: 1648742399}
-                orderBy: timestamp
-                orderDirection: desc
-                first: 100
-            ) {
-                id
-                amountUSD
-                timestamp
-                amount0In
-                amount0Out
-                amount1In
-                amount1Out
-                pair {
-                id
-                }
-            }
-        }"""
+        self.client = client(UNIV3_API)
+        self.data = pd.DataFrame()
 
-        query = ''' query($pair_id: String!,$last_ts:Int!){
+        query = ''' query($pair_id: String!,$last_ts:BigInt!){
             swaps(
                 first: 1000,
                 where: {pair: $pair_id,timestamp_gt:$last_ts}, 
@@ -77,18 +63,37 @@ class UniV2:
                     amount1In
                     amount1Out
                     pair {
-                    id
+                        id
+                    }
                 }
             }'''
 
-        params = {
-            "pair_id": pair_id,
-            "last_ts": last_ts,
-        }
-
-        res = cli.execute(gql(query), variable_values=params)
         cli = self.client
+        pair_id = WETH_USDC_ID
+        last_ts = LAST_TS
 
+        while(int(last_ts) < APR_1ST_2022):
+
+            params = {
+                "pair_id": pair_id,
+                "last_ts": last_ts,
+            }
+
+            res = cli.execute(gql(query), variable_values=params)
+            data = pd.json_normalize(res["swaps"])
+            data.rename(columns={'pair.id': 'poolID'}, inplace=True)
+            data["price"] = (data["amount0In"].astype(float) + data["amount0Out"].astype(float)) / \
+                (data["amount1In"].astype(float) +
+                 data["amount1Out"].astype(float))
+
+            self.data = pd.concat([self.data, data], ignore_index=True)
+
+            # grab last timestamp
+            last_ts = data.iloc[-1]['timestamp']
+
+        self.data.to_csv('data.csv')
+
+        """
         r = requests.post(UNIV3_API, json={'query': query})
 
         print(r.status_code)
@@ -100,7 +105,7 @@ class UniV2:
         #print(tabulate(data, headers='keys', tablefmt='psql'))
 
         # drop non WETHUSDC rows
-        data = data[data.poolID == poolID]
+        data = data[data.poolID == poolID] 
 
         # define price as amount0/amount1 in a swap
         print(data["amount0In"].astype(float))
@@ -109,7 +114,7 @@ class UniV2:
              data["amount1Out"].astype(float))
 
         print(tabulate(data, headers='keys', tablefmt='psql'))
-        self.data = data
+        self.data = data"""
 
     def calculateZscore(self, col, window):
         # Compute rolling zscore for column =col and window=window
@@ -127,4 +132,4 @@ class UniV2:
 
 uniV2 = UniV2()
 uniV2.getData(WETH_USDC_ID)
-uniV2.calculateZscore('price', 7)
+#uniV2.calculateZscore('price', 7)
