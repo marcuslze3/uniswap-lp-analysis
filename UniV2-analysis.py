@@ -1,3 +1,11 @@
+# import ML libraries
+from sklearn.model_selection import train_test_split, GridSearchCV
+from tensorflow.keras.optimizers import Adam
+from tensorflow.keras.models import Sequential, save_model
+from tensorflow.keras import layers
+from sklearn.preprocessing import LabelEncoder, StandardScaler
+
+# import data libraries
 import requests
 from gql import gql, Client
 from gql.transport.requests import RequestsHTTPTransport
@@ -76,6 +84,8 @@ class UniV2:
         count = 0
         # while(count < 2):
         while(int(last_ts) < endTime):
+            # if count > 3:
+            #    break
             params = {
                 "pair_id": pair_id,
                 "last_ts": last_ts,
@@ -92,6 +102,7 @@ class UniV2:
 
             # grab last timestamp
             last_ts = data.iloc[-1]['timestamp']
+            print(last_ts)
             count += 1
 
         self.swapData['timestamp'] = pd.to_datetime(
@@ -112,12 +123,12 @@ class UniV2:
         self.client = client(UNIV3_API)
         self.pairHourData = pd.DataFrame()
 
-        query = ''' query($pair_id: String!,$start_ts:Int!){
+        query = ''' query($pair_id: String!,$last_ts:Int!){
             pairHourDatas(
-                where: {pair: $pair_id,hourStartUnix_gte:$start_ts}
-                orderBy: hourStartUnix
-                orderDirection: asc
-                first: 100
+                where: {pair: $pair_id,hourStartUnix_gte:$last_ts},
+                orderBy: hourStartUnix,
+                orderDirection: asc,
+                first: 1000
             ) {
                 reserveUSD
                 id
@@ -133,14 +144,17 @@ class UniV2:
         cli = self.client
         pair_id = poolID
         # might have to shift hours down by one, or start v last ts mismatch
-        start_ts = startTime
+        last_ts = startTime
+        print(type(last_ts))
 
         count = 0
-        # while(count < 1):
-        while(int(start_ts) < endTime):
+        # while(True):
+        while(int(last_ts) < endTime):
+            # if count > 3:
+            #    break
             params = {
                 "pair_id": pair_id,
-                "start_ts": start_ts,
+                "last_ts": last_ts,
             }
 
             res = cli.execute(gql(query), variable_values=params)
@@ -151,6 +165,9 @@ class UniV2:
             last_ts = data.iloc[-1]['hourStartUnix']
             self.pairHourData = pd.concat(
                 [self.pairHourData, data], ignore_index=True)
+
+            print(last_ts)
+            last_ts = int(last_ts)
             count += 1
 
         self.hourlyVolume = self.pairHourData[['hourStartUnix',
@@ -194,8 +211,66 @@ class UniV2:
         uniV2.saveData()
 
 
+def plot_loss(history):
+    plt.plot(history.history['loss'], label='loss')
+    plt.plot(history.history['val_loss'], label='val_loss')
+    plt.xlabel('Epoch')
+    plt.ylabel('Error [hourly fees]')
+    plt.legend()
+    plt.grid(True)
+    plt.show()
+
+
 uniV2 = UniV2()
-uniV2.main()
+# uniV2.main()
+
+
+class RegressionModel:
+
+    def processData(self, data_file):
+        full_data = pd.read_csv(data_file)
+        full_data = full_data.dropna()
+        print(full_data)
+
+        x_data = full_data['PRICE_ZSCORE']
+        y_data = full_data['hourlyFees']
+
+        self.x_train, self.x_test, self.y_train, self.y_test = train_test_split(x_data, y_data,
+                                                                                test_size=0.2,
+                                                                                random_state=42)
+
+        #x_train_np = np.array([x_train])
+
+    def constructModel(self):
+        self.model = Sequential()
+        self.model.add(layers.Dense(1, name='output'))
+
+    def train(self, save):
+        adam = Adam(lr=0.1)
+        self.model.compile(optimizer=adam, loss='mean_squared_error')
+
+        self.history = self.model.fit(self.x_train, self.y_train, batch_size=16,
+                                      epochs=200, validation_split=0.25)
+
+        if save:
+            self.model.save('models/regression_model_1')
+
+    def plot_loss(self):
+        plt.plot(self.history.history['loss'], label='loss')
+        plt.plot(self.history.history['val_loss'], label='val_loss')
+        plt.xlabel('Epoch')
+        plt.ylabel('Error [hourly fees]')
+        plt.legend()
+        plt.grid(True)
+        plt.show()
+
+
+regression = RegressionModel()
+regression.processData('data.csv')
+regression.constructModel()
+regression.train(save=True)
+regression.plot_loss()
+
 
 # run this to get data and save into a CSV called data.csv
 
